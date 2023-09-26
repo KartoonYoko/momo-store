@@ -73,7 +73,7 @@ deploy-backend:
   stage: deploy
   image: docker:20.10.12-dind
   rules:
-    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+    - if: $CI_COMMIT_BRANCH == "main"
       when: manual
     # - when: manual
   before_script:

@@ -66,7 +66,7 @@ deploy-frontend:
   image: docker:20.10.12-dind
   rules:
     # - when: manual
-    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+    - if: $CI_COMMIT_BRANCH == "main"
       when: manual
   before_script:
     - apk add openssh-client bash

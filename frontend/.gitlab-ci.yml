@@ -7,12 +7,11 @@ stages:
   - build
   - test
   - release
-  # - deploy
+  - deploy
 
 variables:
-  VERSION: 1.0.${CI_PIPELINE_ID}
-  NEXUS_REPO_ARTIFACT_URL: https://nexus.k8s.praktikum-services.tech/repository/momo-store-vtulkin-vladislav-frontend/momo-store-front/momo-store/${VERSION}/momo-store-${VERSION}.tar.gz
   SAST_EXCLUDED_ANALYZERS: gosec-sast
+  FRONTEND_DOCKER_IMAGE_TAG: "1.0.${$CI_COMMIT_SHA}"
 
 build-frontend:
   stage: build
@@ -25,10 +24,10 @@ build-frontend:
     - cd frontend
     - >
       docker build
-      --tag $CI_REGISTRY_IMAGE/momo-frontend:$CI_COMMIT_SHA
-      --build-arg $VUE_APP_API_URL
+      --tag $CI_REGISTRY_IMAGE/momo-frontend:$FRONTEND_DOCKER_IMAGE_TAG
+      --build-arg VUE_APP_API_URL=$VUE_APP_API_URL
       .
-    - docker push $CI_REGISTRY_IMAGE/momo-frontend:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE/momo-frontend:$FRONTEND_DOCKER_IMAGE_TAG
 
 upload-frontend-latest:
   variables:
@@ -39,9 +38,9 @@ upload-frontend-latest:
     - until docker info; do sleep 1; done
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
-    - docker pull $CI_REGISTRY_IMAGE/momo-frontend:$CI_COMMIT_SHA
+    - docker pull $CI_REGISTRY_IMAGE/momo-frontend:$FRONTEND_DOCKER_IMAGE_TAG
     # если образ прошел проверки в CI (сканирование, тесты и т.д), то тегаем latest
-    - docker tag $CI_REGISTRY_IMAGE/momo-frontend:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE/momo-frontend:latest
+    - docker tag $CI_REGISTRY_IMAGE/momo-frontend:$FRONTEND_DOCKER_IMAGE_TAG $CI_REGISTRY_IMAGE/momo-frontend:latest
     - docker push $CI_REGISTRY_IMAGE/momo-frontend:latest
 
 sonarqube-frontend-sast:
@@ -61,3 +60,52 @@ sonarqube-frontend-sast:
       -Dsonar.projectKey=${SONAR_PROJECT_KEY_FRONTEND}
       -Dsonar.host.url=${SONARQUBE_URL}
       -Dsonar.login=${SONAR_PROJECT_FRONTEND_TOKEN}
+
+deploy-frontend:
+  stage: deploy
+  image: docker:20.10.12-dind
+  rules:
+    # - when: manual
+    - if: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == "main"
+      when: manual
+  before_script:
+    - apk add openssh-client bash
+    - eval $(ssh-agent -s)
+    - echo "${DOCKER_SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo "${DOCKER_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - ssh ${DOCKER_USER}@${DOCKER_REMOTE_HOST} "mkdir -p ./frontend/"
+    - scp ./frontend/.nginx-conf ${DOCKER_USER}@${DOCKER_REMOTE_HOST}:./frontend/.nginx-conf 
+    - scp ./docker-compose.yml  ${DOCKER_USER}@${DOCKER_REMOTE_HOST}:docker-compose.yml   
+    - ssh ${DOCKER_USER}@${DOCKER_REMOTE_HOST} "export FRONTEND_IMAGE_TAG=$FRONTEND_DOCKER_IMAGE_TAG && docker compose up frontend -d"
+  environment:
+    name: momo_site
+    url: http://51.250.14.54
+
+
+# пример деплоя в другое окружение
+# deploy-frontend-dev:
+#   stage: deploy
+#   image: docker:20.10.12-dind
+#   rules:
+#     - if: $CI_COMMIT_BRANCH =~ /^feature/
+#     - if: $CI_COMMIT_BRANCH =~ /^develop/
+#   before_script:
+#     - apk add openssh-client bash
+#     - eval $(ssh-agent -s)
+#     - echo "${DOCKER_SSH_PRIVATE_KEY_DEV}" | tr -d '\r' | ssh-add -
+#     - mkdir -p ~/.ssh
+#     - chmod 700 ~/.ssh
+#     - echo "${DOCKER_KNOWN_HOSTS_DEV}" >> ~/.ssh/known_hosts
+#     - chmod 644 ~/.ssh/known_hosts
+#   script:
+#     - ssh ${DOCKER_USER}@${DOCKER_REMOTE_HOST_DEV} "mkdir -p ./frontend/"
+#     - scp ./frontend/.nginx-conf ${DOCKER_USER_DEV}@${DOCKER_REMOTE_HOST_DEV}:./frontend/.nginx-conf 
+#     - scp ./docker-compose.yml  ${DOCKER_USER_DEV}@${DOCKER_REMOTE_HOST_DEV}:docker-compose.yml   
+#     - ssh ${DOCKER_USER}@${DOCKER_REMOTE_HOST_DEV} "export FRONTEND_IMAGE_TAG=$FRONTEND_DOCKER_IMAGE_TAG && docker compose up frontend -d"
+#   environment:
+#     name: momo_site_dev
+#     url: http://some-url

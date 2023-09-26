@@ -7,10 +7,11 @@ stages:
   - build
   - test
   - release
-  # - deploy
+  - deploy
 
 variables:
   SAST_EXCLUDED_ANALYZERS: nodejs-scan, eslint, spotbugs-sast, gosec-sast
+  BACKEND_DOCKER_IMAGE_TAG: "1.0.${$CI_COMMIT_SHA}"
 
 build-backend:
   stage: build
@@ -23,9 +24,9 @@ build-backend:
     - cd backend
     - >
       docker build
-      --tag $CI_REGISTRY_IMAGE/momo-backend:$CI_COMMIT_SHA
+      --tag $CI_REGISTRY_IMAGE/momo-backend:$BACKEND_DOCKER_IMAGE_TAG
       .
-    - docker push $CI_REGISTRY_IMAGE/momo-backend:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE/momo-backend:$BACKEND_DOCKER_IMAGE_TAG
 
 upload-backend-latest:
   variables:
@@ -36,9 +37,9 @@ upload-backend-latest:
     - until docker info; do sleep 1; done
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
-    - docker pull $CI_REGISTRY_IMAGE/momo-backend:$CI_COMMIT_SHA
+    - docker pull $CI_REGISTRY_IMAGE/momo-backend:$BACKEND_DOCKER_IMAGE_TAG
     # если образ прошел проверки в CI (сканирование, тесты и т.д), то тегаем latest
-    - docker tag $CI_REGISTRY_IMAGE/momo-backend:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE/momo-backend:latest
+    - docker tag $CI_REGISTRY_IMAGE/momo-backend:$BACKEND_DOCKER_IMAGE_TAG $CI_REGISTRY_IMAGE/momo-backend:latest
     - docker push $CI_REGISTRY_IMAGE/momo-backend:latest
 
 sonarqube-backend-sast:
@@ -67,3 +68,43 @@ unit-tests-backend:
   script:
     - cd backend
     - go test -v ./...
+
+deploy-backend:
+  stage: deploy
+  image: docker:20.10.12-dind
+  rules:
+    - if: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == "main"
+      when: manual
+    # - when: manual
+  before_script:
+    - apk add openssh-client bash
+    - eval $(ssh-agent -s)
+    - echo "${DOCKER_SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo "${DOCKER_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - export BACKEND_IMAGE_TAG="$BACKEND_DOCKER_IMAGE_TAG"
+    - docker context create momo-remote --docker host=ssh://${DOCKER_USER}@${DOCKER_REMOTE_HOST}
+    - docker --context momo-remote compose up backend -d
+
+# пример деплоя на другое окружение
+# deploy-backend-dev:
+#   stage: deploy
+#   image: docker:20.10.12-dind
+#   rules:
+#     - if: $CI_COMMIT_BRANCH =~ /^feature/
+#     - if: $CI_COMMIT_BRANCH =~ /^develop/
+#   before_script:
+#     - apk add openssh-client bash
+#     - eval $(ssh-agent -s)
+#     - echo "${DOCKER_SSH_PRIVATE_KEY_DEV}" | tr -d '\r' | ssh-add -
+#     - mkdir -p ~/.ssh
+#     - chmod 700 ~/.ssh
+#     - echo "${DOCKER_KNOWN_HOSTS_DEV}" >> ~/.ssh/known_hosts
+#     - chmod 644 ~/.ssh/known_hosts
+#   script:
+#     - export BACKEND_IMAGE_TAG="$BACKEND_DOCKER_IMAGE_TAG"
+#     - docker context create momo-remote --docker host=ssh://${DOCKER_USER_DEV}@${DOCKER_REMOTE_HOST_DEV}
+#     - docker --context momo-remote compose up backend -d

@@ -11,7 +11,7 @@ stages:
 
 variables:
   SAST_EXCLUDED_ANALYZERS: gosec-sast
-  FRONTEND_DOCKER_IMAGE_TAG: "1.0.${$CI_COMMIT_SHA}"
+  FRONTEND_DOCKER_IMAGE_TAG: "1.0.${CI_COMMIT_SHA}"
 
 build-frontend:
   stage: build

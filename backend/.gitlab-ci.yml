@@ -11,7 +11,7 @@ stages:
 
 variables:
   SAST_EXCLUDED_ANALYZERS: nodejs-scan, eslint, spotbugs-sast, gosec-sast
-  BACKEND_DOCKER_IMAGE_TAG: "1.0.${$CI_COMMIT_SHA}"
+  BACKEND_DOCKER_IMAGE_TAG: "1.0.${CI_COMMIT_SHA}"
 
 build-backend:
   stage: build
@@ -71,11 +71,10 @@ unit-tests-backend:
 
 deploy-backend:
   stage: deploy
-  image: docker:20.10.12-dind
+  image: docker:dind
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
       when: manual
-    # - when: manual
   before_script:
     - apk add openssh-client bash
     - eval $(ssh-agent -s)
@@ -85,9 +84,10 @@ deploy-backend:
     - echo "${DOCKER_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   script:
-    - export BACKEND_IMAGE_TAG="$BACKEND_DOCKER_IMAGE_TAG"
-    - docker context create momo-remote --docker host=ssh://${DOCKER_USER}@${DOCKER_REMOTE_HOST}
-    - docker --context momo-remote compose up backend -d
+    # - export BACKEND_IMAGE_TAG="$BACKEND_DOCKER_IMAGE_TAG"
+    # - docker context create momo-remote --docker host=ssh://${DOCKER_USER}@${DOCKER_REMOTE_HOST}
+    # - docker --context momo-remote compose up backend -d
+    - ssh ${DOCKER_USER}@${DOCKER_REMOTE_HOST} "export BACKEND_IMAGE_TAG=$BACKEND_DOCKER_IMAGE_TAG && docker compose up backend -d"
 
 # пример деплоя на другое окружение
 # deploy-backend-dev:

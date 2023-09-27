@@ -11,7 +11,7 @@ stages:
 
 variables:
   SAST_EXCLUDED_ANALYZERS: nodejs-scan, eslint, spotbugs-sast, gosec-sast
-  BACKEND_DOCKER_IMAGE_TAG: "1.0.${CI_COMMIT_SHA}"
+  BACKEND_DOCKER_IMAGE_TAG: "1.0.${CI_PIPELINE_ID}"
 
 build-backend:
   stage: build
